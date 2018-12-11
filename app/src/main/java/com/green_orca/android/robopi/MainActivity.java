@@ -1,6 +1,9 @@
 package com.green_orca.android.robopi;
 
 import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,8 +18,9 @@ import android.widget.TableLayout;
 import android.widget.TableRow;
 
 import java.util.HashMap;
+import java.util.Set;
 
-public class MainActivity extends Activity implements SocketClient.OnMessageReceived{
+public class MainActivity extends Activity implements BluetoothClient.OnMessageReceived{
 
     class CustomRunnable implements Runnable{
 
@@ -29,12 +33,12 @@ public class MainActivity extends Activity implements SocketClient.OnMessageRece
 
         public void run(){
             asyncSendMessage(message);
-            handler.postDelayed(this, 200);
+            handler.postDelayed(this, 300);
         }
 
     }
 
-    SocketClient socket;
+    BluetoothClient socket;
     EditText logger;
     private final String LOGTAG = "MainActivity";
     private final int FULLSPEED = 80;
@@ -71,8 +75,6 @@ public class MainActivity extends Activity implements SocketClient.OnMessageRece
 
         directions.put("KOPF LINKS", "H:-50;0;");
         directions.put("KOPF RECHTS", "H:50;0;");
-
-        socket = new SocketClient(this);
 
         logger = findViewById(R.id.editText);
 
@@ -157,16 +159,49 @@ public class MainActivity extends Activity implements SocketClient.OnMessageRece
      * connect to RoboPi
      */
     private void connect(){
-        EditText edi = (EditText) findViewById(R.id.textFieldIP);
-        final String ip = edi.getText().toString();
-        AsyncTask t = new AsyncTask() {
-            @Override
-            protected Object doInBackground(Object[] objects) {
-                socket.connect(ip, 8888);
-                return null;
+        EditText edi = (EditText) findViewById(R.id.editText);
+        edi.getText().clear();
+        BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (mBluetoothAdapter == null) {
+            // Device does not support Bluetooth
+        }
+
+        if (!mBluetoothAdapter.isEnabled()) {
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            int REQUEST_ENABLE_BT = 1;
+            startActivityForResult(enableBtIntent, 1);
+        }
+
+        Set<BluetoothDevice> pairedDevices = mBluetoothAdapter.getBondedDevices();
+        BluetoothDevice myPi = null;
+
+        if (pairedDevices.size() > 0) {
+            // There are paired devices. Get the name and address of each paired device.
+            for (BluetoothDevice device : pairedDevices) {
+                String deviceName = device.getName();
+                String deviceHardwareAddress = device.getAddress(); // MAC address
+                edi.getText().append(deviceName+" :: "+deviceHardwareAddress+System.lineSeparator());
+                if (deviceName.equals("raspi3")) {
+                    myPi = device;
+                }
             }
-        };
-        t.execute();
+        }
+
+        socket = new BluetoothClient(this);
+        if (myPi != null){
+            final BluetoothDevice xyz = myPi;
+            AsyncTask t = new AsyncTask() {
+                @Override
+                protected Object doInBackground(Object[] objects) {
+                    socket.connect(xyz, 3);
+
+                    return null;
+                }
+            };
+            t.execute();
+            Log.d(LOGTAG, "connected device");
+        }
+
 
     }
 
@@ -189,7 +224,7 @@ public class MainActivity extends Activity implements SocketClient.OnMessageRece
             @Override
             protected Object doInBackground(Object[] objects) {
                 try{
-                    SocketClient socket = (SocketClient)objects[0];
+                    BluetoothClient socket = (BluetoothClient)objects[0];
                     String msg = (String)objects[1];
                     socket.send(msg);
                 } catch(Exception ex){
@@ -199,7 +234,7 @@ public class MainActivity extends Activity implements SocketClient.OnMessageRece
             }
         };
         Log.e(LOGTAG,"sending:: "+msg);
-        Object[] params = {socket,msg};
+        Object[] params = {socket, msg};
         sendDataTask.execute(params);
     }
 
